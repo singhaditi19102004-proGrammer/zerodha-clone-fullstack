@@ -1,0 +1,63 @@
+name: Zerodha Clone CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ci:
+    name: Build & Verify (Backend, Frontend, Dashboard)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            dashboard/package-lock.json
+
+      - name: Verify Backend
+        working-directory: ./backend
+        run: |
+          npm ci
+          node --check index.js
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Dashboard
+        working-directory: ./dashboard
+        run: |
+          npm ci
+          npm run build
+
+  cd:
+    name: Deploy to Production
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Render Deploy Hook
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$DEPLOY_HOOK_URL" ]; then
+            curl -fsSL -X POST "$DEPLOY_HOOK_URL"
+          else
+            echo "No DEPLOY_HOOK_URL configured; skipping webhook deploy."
+          fi
